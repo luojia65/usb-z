@@ -125,12 +125,22 @@ fn enumerate_host_controllers() {
     }
 }
 
-fn enumerate_all_devices() {
-    let _devices = enumerate_all_devices_with_guid(&GUID_DEVINTERFACE_USB_DEVICE as *const _);
-    let _hubs = enumerate_all_devices_with_guid(&GUID_DEVINTERFACE_USB_HUB as *const _);
+#[derive(Debug)]
+struct DeviceNode {
+    device_desc_name: std::ffi::OsString,
+    device_driver_name: std::ffi::OsString,
+    device_path: std::ffi::OsString,
 }
 
-fn enumerate_all_devices_with_guid(guid: *const GUID) {
+fn enumerate_all_devices() -> (Vec<DeviceNode>, Vec<DeviceNode>){
+    let devices = enumerate_all_devices_with_guid(&GUID_DEVINTERFACE_USB_DEVICE as *const _);
+    println!("{:#?}", devices);
+    let hubs = enumerate_all_devices_with_guid(&GUID_DEVINTERFACE_USB_HUB as *const _);
+    println!("{:#?}", hubs);
+    (devices, hubs)
+}
+
+fn enumerate_all_devices_with_guid(guid: *const GUID) -> Vec<DeviceNode> {
     let device_info = unsafe {
         SetupDiGetClassDevsW(
             guid,
@@ -145,6 +155,7 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) {
     let mut device_info_data = MaybeUninit::<SP_DEVINFO_DATA>::uninit();
     unsafe { device_info_data.get_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
     let mut index = 0;
+    let mut nodes = Vec::new();
     while unsafe { 
         SetupDiEnumDeviceInfo(
             device_info,
@@ -152,7 +163,7 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) {
             device_info_data.as_mut_ptr()
         ) == TRUE
     } {
-        println!("{}", index);
+        // println!("{}", index);
         let (device_desc_pb, device_desc_pb_len) = get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DEVICEDESC);
         let (driver_pb, driver_pb_len) = get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DRIVER);
 
@@ -162,22 +173,86 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) {
             device_desc_pb as *mut _,
             device_desc_pb_len as usize / 2 - 1
         ) }); 
-        println!("{:?}", name_device_desc);
+        // println!("{:?}", name_device_desc);
         let name_driver = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
             driver_pb as *mut _,
             driver_pb_len as usize / 2 - 1
         ) }); 
-        println!("{:?}", name_driver);
+        // println!("{:?}", name_driver);
         // end print
 
-
-
-
+        let mut device_interface_data = MaybeUninit::<SP_DEVICE_INTERFACE_DATA>::uninit();
+        unsafe { device_interface_data.get_mut() }.cbSize = size_of::<SP_DEVICE_INTERFACE_DATA>() as DWORD;
+        let success = unsafe {
+            SetupDiEnumDeviceInterfaces(
+                device_info,
+                core::ptr::null_mut(),
+                guid,
+                index,
+                device_interface_data.as_mut_ptr()
+            )
+        };
+        if success == FALSE {
+            println!("SetupDiEnumDeviceInterfaces Error!");
+            continue;
+        }
+        let mut required_length = MaybeUninit::uninit();
+        let success = unsafe {
+            SetupDiGetDeviceInterfaceDetailW(
+                device_info,
+                device_interface_data.as_mut_ptr(),
+                core::ptr::null_mut(),
+                0,
+                required_length.as_mut_ptr(),
+                core::ptr::null_mut()
+            )
+        };
+        if success == FALSE && unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER {
+            println!("SetupDiGetDeviceInterfaceDetailW Error[1]!");
+            continue;
+        }
         let heap_handle = unsafe { GetProcessHeap() };
+        let device_detail_data = NonNull::new(unsafe { 
+            HeapAlloc(heap_handle, 0, required_length.assume_init() as usize) as *mut _ 
+        });
+        let mut device_detail_data = if let Some(device_detail_data) = device_detail_data { 
+            device_detail_data.cast::<SP_DEVICE_INTERFACE_DETAIL_DATA_W>()
+        } else {
+            println!("Error HeapAlloc");
+            continue;
+        };
+        unsafe { device_detail_data.as_mut() }.cbSize = size_of::<SP_DEVICE_INTERFACE_DETAIL_DATA_W>() as DWORD;
+        let success = unsafe {
+            SetupDiGetDeviceInterfaceDetailW(
+                device_info,
+                device_interface_data.as_mut_ptr(),
+                device_detail_data.as_mut(),
+                *required_length.as_ptr(),
+                required_length.as_mut_ptr(),
+                core::ptr::null_mut()
+            )
+        };
+        if success == FALSE {
+            println!("SetupDiGetDeviceInterfaceDetailW Error[2]!");
+            continue;
+        }
+        let path = &unsafe { device_detail_data.as_ref() }.DevicePath;
+        let name_path = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
+            path as *const _ as *mut _,
+            required_length.assume_init() as usize / 2 - 3
+        ) }); 
+        // println!("{:?}", name_path);
+        let node = DeviceNode {
+            device_desc_name: name_device_desc,
+            device_driver_name: name_driver,
+            device_path: name_path,
+        };
+        nodes.push(node);
         unsafe { HeapFree(heap_handle, 0, driver_pb as *const _ as *mut _) };
         unsafe { HeapFree(heap_handle, 0, device_desc_pb as *const _ as *mut _) };
         index += 1;
     }
+    nodes
 }
 
 fn get_device_property(
