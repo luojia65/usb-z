@@ -1,6 +1,6 @@
 #![feature(maybe_uninit_ref)]
 use winapi::{
-    shared::{usbiodef::*, minwindef::*, winerror::*},
+    shared::{guiddef::GUID, usbiodef::*, minwindef::*, winerror::*},
     um::{
         errhandlingapi::*, setupapi::*, fileapi::*, winnt::*, handleapi::*, heapapi::*,
         ioapiset::*,
@@ -24,6 +24,8 @@ mod api {
 use api::*;
 
 fn enumerate_host_controllers() {
+    enumerate_all_devices();
+
     let device_info = unsafe {
         SetupDiGetClassDevsA(
             &GUID_CLASS_USB_HOST_CONTROLLER as *const _,
@@ -123,17 +125,34 @@ fn enumerate_host_controllers() {
     }
 }
 
-fn enumerate_host_controller(h_hc_dev: HANDLE) {
-    get_hcd_driver_key_name(h_hc_dev);
+fn enumerate_all_devices() {
+    let _devices = enumerate_all_devices_with_guid(&GUID_DEVINTERFACE_USB_DEVICE as *const _);
+    let _hubs = enumerate_all_devices_with_guid(&GUID_DEVINTERFACE_USB_HUB as *const _);
 }
 
-fn get_hcd_driver_key_name(hcd: HANDLE) {
+fn enumerate_all_devices_with_guid(guid: *const GUID) {
+    let device_info = unsafe {
+        SetupDiGetClassDevsA(
+            guid,
+            core::ptr::null(),
+            core::ptr::null_mut(),
+            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE,
+        )
+    };
+    if device_info == INVALID_HANDLE_VALUE {
+        println!("SetupDiGetClassDevsA Error!");
+    }
+    //todo
+}
+
+fn enumerate_host_controller(h_hc_dev: HANDLE) {
+    // get driver key name from handle
     let mut driver_key_name = MaybeUninit::<USB_HCD_DRIVERKEY_NAME>::uninit();
     unsafe { driver_key_name.get_mut() }.ActualLength = 0;
     let nbytes = 0;
     let success = unsafe { 
         DeviceIoControl(
-            hcd,
+            h_hc_dev,
             IOCTL_GET_HCD_DRIVERKEY_NAME,
             driver_key_name.as_mut_ptr() as *mut _,
             size_of::<USB_HCD_DRIVERKEY_NAME>() as DWORD,
@@ -160,7 +179,7 @@ fn get_hcd_driver_key_name(hcd: HANDLE) {
     };
     let success = unsafe { 
         DeviceIoControl(
-            hcd,
+            h_hc_dev,
             IOCTL_GET_HCD_DRIVERKEY_NAME,
             driver_key_name_w.cast().as_ptr(),
             nbytes,
@@ -179,7 +198,12 @@ fn get_hcd_driver_key_name(hcd: HANDLE) {
         &driver_key_name_w.as_ref().DriverKeyName as *const _,
         (nbytes as usize - size_of::<ULONG>()) / 2 - 2 
     ) }); // cut two trailing \0 bytes
-    println!("│ ├ Driver Key Name: {:?}", name);
+    println!("│ Driver Key Name: {:?}", name);
+
+    // find device instance matching the driver name
+    
+
+    // Clean-up
     unsafe { HeapFree(heap_handle, 0, driver_key_name_w.cast().as_ptr()) };
 }
 
