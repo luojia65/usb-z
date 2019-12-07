@@ -145,9 +145,9 @@ impl fmt::Debug for DeviceNode {
 
 fn enumerate_all_devices() -> (Vec<DeviceNode>, Vec<DeviceNode>){
     let devices = enumerate_all_devices_with_guid(&GUID_DEVINTERFACE_USB_DEVICE as *const _);
-    println!("{:#?}", devices);
+    // println!("{:#?}", devices);
     let hubs = enumerate_all_devices_with_guid(&GUID_DEVINTERFACE_USB_HUB as *const _);
-    println!("{:#?}", hubs);
+    // println!("{:#?}", hubs);
     (devices, hubs)
 }
 
