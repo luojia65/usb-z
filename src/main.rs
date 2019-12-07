@@ -27,7 +27,7 @@ fn enumerate_host_controllers() {
     enumerate_all_devices();
 
     let device_info = unsafe {
-        SetupDiGetClassDevsA(
+        SetupDiGetClassDevsW(
             &GUID_CLASS_USB_HOST_CONTROLLER as *const _,
             core::ptr::null(),
             core::ptr::null_mut(),
@@ -35,7 +35,7 @@ fn enumerate_host_controllers() {
         )
     };
     if device_info == INVALID_HANDLE_VALUE {
-        println!("SetupDiGetClassDevsA Error!");
+        println!("SetupDiGetClassDevsW Error!");
     }
     let mut device_info_data = MaybeUninit::<SP_DEVINFO_DATA>::uninit();
     unsafe { device_info_data.get_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
@@ -65,7 +65,7 @@ fn enumerate_host_controllers() {
         }
         let mut required_length = MaybeUninit::uninit();
         let success = unsafe {
-            SetupDiGetDeviceInterfaceDetailA(
+            SetupDiGetDeviceInterfaceDetailW(
                 device_info,
                 device_interface_data.as_mut_ptr(),
                 core::ptr::null_mut(),
@@ -75,7 +75,7 @@ fn enumerate_host_controllers() {
             )
         };
         if success == FALSE && unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER {
-            println!("SetupDiGetDeviceInterfaceDetailA Error[1]!");
+            println!("SetupDiGetDeviceInterfaceDetailW Error[1]!");
             continue;
         }
         let heap_handle = unsafe { GetProcessHeap() };
@@ -83,14 +83,14 @@ fn enumerate_host_controllers() {
             HeapAlloc(heap_handle, 0, required_length.assume_init() as usize) as *mut _ 
         });
         let mut device_detail_data = if let Some(device_detail_data) = device_detail_data { 
-            device_detail_data.cast::<SP_DEVICE_INTERFACE_DETAIL_DATA_A>()
+            device_detail_data.cast::<SP_DEVICE_INTERFACE_DETAIL_DATA_W>()
         } else {
             println!("Error HeapAlloc");
             continue;
         };
-        unsafe { device_detail_data.as_mut() }.cbSize = size_of::<SP_DEVICE_INTERFACE_DETAIL_DATA_A>() as DWORD;
+        unsafe { device_detail_data.as_mut() }.cbSize = size_of::<SP_DEVICE_INTERFACE_DETAIL_DATA_W>() as DWORD;
         let success = unsafe {
-            SetupDiGetDeviceInterfaceDetailA(
+            SetupDiGetDeviceInterfaceDetailW(
                 device_info,
                 device_interface_data.as_mut_ptr(),
                 device_detail_data.as_mut(),
@@ -100,11 +100,11 @@ fn enumerate_host_controllers() {
             )
         };
         if success == FALSE {
-            println!("SetupDiGetDeviceInterfaceDetailA Error[2]!");
+            println!("SetupDiGetDeviceInterfaceDetailW Error[2]!");
             continue;
         }
         let h_hc_dev = unsafe {
-            CreateFileA(
+            CreateFileW(
                 &device_detail_data.as_ref().DevicePath as *const _,
                 GENERIC_WRITE,
                 FILE_SHARE_WRITE,
@@ -115,7 +115,7 @@ fn enumerate_host_controllers() {
             )
         };
         if h_hc_dev == INVALID_HANDLE_VALUE {
-            println!("CreateFileA Error!");
+            println!("CreateFileW Error!");
             continue;
         }
         enumerate_host_controller(h_hc_dev);
@@ -132,7 +132,7 @@ fn enumerate_all_devices() {
 
 fn enumerate_all_devices_with_guid(guid: *const GUID) {
     let device_info = unsafe {
-        SetupDiGetClassDevsA(
+        SetupDiGetClassDevsW(
             guid,
             core::ptr::null(),
             core::ptr::null_mut(),
@@ -140,7 +140,7 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) {
         )
     };
     if device_info == INVALID_HANDLE_VALUE {
-        println!("SetupDiGetClassDevsA Error!");
+        println!("SetupDiGetClassDevsW Error!");
     }
     let mut device_info_data = MaybeUninit::<SP_DEVINFO_DATA>::uninit();
     unsafe { device_info_data.get_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
@@ -169,6 +169,8 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) {
         ) }); 
         println!("{:?}", name_driver);
         // end print
+
+
 
 
         let heap_handle = unsafe { GetProcessHeap() };
