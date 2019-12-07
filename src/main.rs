@@ -142,11 +142,92 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) {
     if device_info == INVALID_HANDLE_VALUE {
         println!("SetupDiGetClassDevsA Error!");
     }
-    //todo
+    let mut device_info_data = MaybeUninit::<SP_DEVINFO_DATA>::uninit();
+    unsafe { device_info_data.get_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
+    let mut index = 0;
+    while unsafe { 
+        SetupDiEnumDeviceInfo(
+            device_info,
+            index,
+            device_info_data.as_mut_ptr()
+        ) == TRUE
+    } {
+        println!("{}", index);
+        let (device_desc_pb, device_desc_pb_len) = get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DEVICEDESC);
+        let (driver_pb, driver_pb_len) = get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DRIVER);
+
+        // print (?)
+        use std::os::windows::prelude::*;
+        let name_device_desc = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
+            device_desc_pb as *mut _,
+            device_desc_pb_len as usize / 2 - 1
+        ) }); 
+        println!("{:?}", name_device_desc);
+        let name_driver = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
+            driver_pb as *mut _,
+            driver_pb_len as usize / 2 - 1
+        ) }); 
+        println!("{:?}", name_driver);
+        // end print
+
+
+        let heap_handle = unsafe { GetProcessHeap() };
+        unsafe { HeapFree(heap_handle, 0, driver_pb as *const _ as *mut _) };
+        unsafe { HeapFree(heap_handle, 0, device_desc_pb as *const _ as *mut _) };
+        index += 1;
+    }
 }
 
+fn get_device_property(
+    device_info_set: HDEVINFO,
+    device_info_data: PSP_DEVINFO_DATA,
+    property: DWORD,
+) -> (*mut u8, DWORD) {
+    let mut required_length = MaybeUninit::uninit();
+    let success = unsafe { 
+        SetupDiGetDeviceRegistryPropertyW(
+            device_info_set,
+            device_info_data,
+            property,
+            core::ptr::null_mut(),
+            core::ptr::null_mut(),
+            0,
+            required_length.as_mut_ptr()
+        )
+    };
+    if success == FALSE && unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER {
+        println!("SetupDiGetDeviceRegistryPropertyW Error[1]!");
+    }
+    let heap_handle = unsafe { GetProcessHeap() };
+    let property_buffer = NonNull::new(unsafe { 
+        HeapAlloc(heap_handle, 0, required_length.assume_init() as usize) as *mut _ 
+    });
+    let property_buffer = if let Some(property_buffer) = property_buffer { 
+        property_buffer.as_ptr()
+    } else {
+        println!("Error HeapAlloc");
+        panic!()
+    };
+    let success = unsafe { 
+        SetupDiGetDeviceRegistryPropertyW(
+            device_info_set,
+            device_info_data,
+            property,
+            core::ptr::null_mut(),
+            property_buffer,
+            required_length.assume_init(),
+            required_length.as_mut_ptr()
+        )
+    };
+    if success == FALSE {
+        println!("SetupDiGetDeviceRegistryPropertyW Error[2]!");
+    }
+    (property_buffer, unsafe { required_length.assume_init() })
+}
+
+
 fn enumerate_host_controller(h_hc_dev: HANDLE) {
-    // get driver key name from handle
+    // get HCD driver key name from handle; GetHCDDriverKeyName
     let mut driver_key_name = MaybeUninit::<USB_HCD_DRIVERKEY_NAME>::uninit();
     unsafe { driver_key_name.get_mut() }.ActualLength = 0;
     let nbytes = 0;
