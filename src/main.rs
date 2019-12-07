@@ -1,4 +1,4 @@
-#![feature(maybe_uninit_ref)]
+#![feature(maybe_uninit_ref, new_uninit)]
 use winapi::{
     shared::{guiddef::GUID, usbiodef::*, minwindef::*, winerror::*},
     um::{
@@ -24,7 +24,7 @@ mod api {
 use api::*;
 
 fn enumerate_host_controllers() {
-    enumerate_all_devices();
+    let (devices, hubs) = enumerate_all_devices();
 
     let device_info = unsafe {
         SetupDiGetClassDevsW(
@@ -125,11 +125,22 @@ fn enumerate_host_controllers() {
     }
 }
 
-#[derive(Debug)]
 struct DeviceNode {
     device_desc_name: std::ffi::OsString,
     device_driver_name: std::ffi::OsString,
     device_path: std::ffi::OsString,
+    device_info_data: Box<SP_DEVINFO_DATA>,
+}
+
+use core::fmt;
+impl fmt::Debug for DeviceNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DeviceNode")
+            .field("desc", &self.device_desc_name)
+            .field("driver", &self.device_driver_name)
+            .field("path", &self.device_path)
+            .finish()
+    }
 }
 
 fn enumerate_all_devices() -> (Vec<DeviceNode>, Vec<DeviceNode>){
@@ -152,17 +163,21 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) -> Vec<DeviceNode> {
     if device_info == INVALID_HANDLE_VALUE {
         println!("SetupDiGetClassDevsW Error!");
     }
-    let mut device_info_data = MaybeUninit::<SP_DEVINFO_DATA>::uninit();
-    unsafe { device_info_data.get_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
     let mut index = 0;
     let mut nodes = Vec::new();
-    while unsafe { 
-        SetupDiEnumDeviceInfo(
-            device_info,
-            index,
-            device_info_data.as_mut_ptr()
-        ) == TRUE
-    } {
+    loop {
+        let mut device_info_data = Box::<SP_DEVINFO_DATA>::new_uninit();
+        unsafe { device_info_data.get_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
+        let success = unsafe { 
+            SetupDiEnumDeviceInfo(
+                device_info,
+                index,
+                device_info_data.as_mut_ptr()
+            ) 
+        };
+        if success == FALSE {
+            break;
+        }
         // println!("{}", index);
         let (device_desc_pb, device_desc_pb_len) = get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DEVICEDESC);
         let (driver_pb, driver_pb_len) = get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DRIVER);
@@ -246,6 +261,7 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) -> Vec<DeviceNode> {
             device_desc_name: name_device_desc,
             device_driver_name: name_driver,
             device_path: name_path,
+            device_info_data: unsafe { device_info_data.assume_init() }
         };
         nodes.push(node);
         unsafe { HeapFree(heap_handle, 0, driver_pb as *const _ as *mut _) };
