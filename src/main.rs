@@ -676,10 +676,10 @@ fn get_root_hub_name(h_hc_dev: HANDLE) -> std::ffi::OsString {
     if success == FALSE && unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER {
         println!("DeviceIoControl Error[1]! {}", unsafe { GetLastError() });
     }
-    println!("{:?} {:?}",
-        unsafe { root_hub_name_w.get_mut() }.ActualLength, 
-        n_bytes
-    );
+    // println!("{:?} {:?}",
+    //     unsafe { root_hub_name_w.get_mut() }.ActualLength, 
+    //     n_bytes
+    // );
     n_bytes += unsafe { root_hub_name_w.get_mut() }.ActualLength;
     let heap_handle = unsafe { GetProcessHeap() };
     let root_hub_name_w = NonNull::new(unsafe { 
@@ -711,6 +711,7 @@ fn get_root_hub_name(h_hc_dev: HANDLE) -> std::ffi::OsString {
         &root_hub_name_w.as_ref().RootHubName as *const _ as *mut _,
         (n_bytes as usize - size_of::<DWORD>()) / 2 - 1
     ) }); 
+    unsafe { HeapFree(heap_handle, 0, root_hub_name_w.cast().as_ptr()) };
     root_hub_name
 }
 
