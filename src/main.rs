@@ -15,6 +15,7 @@ pub mod api {
     #![allow(non_snake_case, non_camel_case_types, non_upper_case_globals)]
     use winapi::{shared::minwindef::*, um::winnt::*};
     use winapi::{STRUCT, ENUM};
+    pub const IOCTL_USB_GET_ROOT_HUB_NAME: DWORD = 0x220408;
     pub const IOCTL_GET_HCD_DRIVERKEY_NAME: DWORD = 0x220424;
     winapi::STRUCT!{struct USB_HCD_DRIVERKEY_NAME {
         ActualLength: ULONG,
@@ -74,6 +75,11 @@ pub mod api {
         WdmUsbPowerDeviceD2,
         WdmUsbPowerDeviceD3,
     }}
+    STRUCT!{struct USB_ROOT_HUB_NAME {
+        ActualLength: ULONG,
+        RootHubName: [WCHAR; 1],
+    }}
+    pub type PUSB_ROOT_HUB_NAME = *mut USB_ROOT_HUB_NAME;
 }
 use api::*;
 
@@ -637,21 +643,88 @@ fn enumerate_host_controller(h_hc_dev: HANDLE) {
     println!("│ Id: {:?}", dev_props.device_id);
     println!("│ Desc: {:?}", dev_props.device_desc.unwrap());
     
-    let hc_info = get_host_controller_power_map(h_hc_dev);
-    println!("| Info: {:?}", hc_info);
+    // // Get the USB Host Controller power map
+    // let hc_info = get_host_controller_power_map(h_hc_dev);
+    // println!("| Info: {:?}", hc_info);
+
+    // Get bus, device and function
+    let root_hub_name = get_root_hub_name(h_hc_dev);
+    println!("│ Root hub name: {:?}", root_hub_name);
+
+    // Get the USB Host Controller info
+
+    // Get name of root hub, enumerate root hub
+
 }
 
-#[derive(Debug)]
-struct UsbHostControllerInfo {
-
+fn get_root_hub_name(h_hc_dev: HANDLE) -> std::ffi::OsString {
+    let mut root_hub_name_w = Box::<USB_ROOT_HUB_NAME>::new_uninit();
+    unsafe { root_hub_name_w.get_mut() }.ActualLength = 0;
+    let mut n_bytes = 0;
+    let success = unsafe {
+        DeviceIoControl(
+            h_hc_dev, 
+            IOCTL_USB_GET_ROOT_HUB_NAME, 
+            core::ptr::null_mut(), 
+            0,
+            root_hub_name_w.as_mut_ptr() as *mut _, 
+            size_of::<USB_ROOT_HUB_NAME>() as DWORD, 
+            &mut n_bytes as *const _ as *mut _, 
+            core::ptr::null_mut()
+        )
+    };
+    if success == FALSE && unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER {
+        println!("DeviceIoControl Error[1]! {}", unsafe { GetLastError() });
+    }
+    println!("{:?} {:?}",
+        unsafe { root_hub_name_w.get_mut() }.ActualLength, 
+        n_bytes
+    );
+    n_bytes += unsafe { root_hub_name_w.get_mut() }.ActualLength;
+    let heap_handle = unsafe { GetProcessHeap() };
+    let root_hub_name_w = NonNull::new(unsafe { 
+        HeapAlloc(heap_handle, 0, n_bytes as usize) as *mut _ 
+    });
+    let root_hub_name_w = if let Some(root_hub_name_w) = root_hub_name_w { 
+        root_hub_name_w.cast::<USB_ROOT_HUB_NAME>()
+    } else {
+        println!("Error HeapAlloc");
+        unimplemented!()
+    };
+    let success = unsafe {
+        DeviceIoControl(
+            h_hc_dev, 
+            IOCTL_USB_GET_ROOT_HUB_NAME, 
+            core::ptr::null_mut(), 
+            0,
+            root_hub_name_w.cast().as_ptr(), 
+            n_bytes, 
+            &mut n_bytes as *const _ as *mut _, 
+            core::ptr::null_mut()
+        )
+    };
+    if success == FALSE {
+        println!("DeviceIoControl Error[2]!");
+    }
+    use std::os::windows::prelude::*;
+    let root_hub_name = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
+        &root_hub_name_w.as_ref().RootHubName as *const _ as *mut _,
+        (n_bytes as usize - size_of::<DWORD>()) / 2 - 1
+    ) }); 
+    root_hub_name
 }
 
-fn get_host_controller_power_map(
-    h_hc_dev: HANDLE,
-) -> UsbHostControllerInfo {
-    
-    unimplemented!()
-}
+// #[derive(Debug)]
+// struct UsbHostControllerInfo {
+
+// }
+
+// fn get_host_controller_power_map(
+//     h_hc_dev: HANDLE,
+// ) -> UsbHostControllerInfo {
+//     let _ = h_hc_dev;
+//     unimplemented!()
+// }
 
 fn main() {
     enumerate_host_controllers();
