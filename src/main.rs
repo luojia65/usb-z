@@ -649,7 +649,8 @@ fn enumerate_host_controller(h_hc_dev: HANDLE) {
 
     // Get bus, device and function
     let root_hub_name = get_root_hub_name(h_hc_dev);
-    println!("│ Root hub name: {:?}", root_hub_name);
+    println!("│ ├ Root hub");
+    println!("│ │ Name: {:?}", root_hub_name);
 
     // Get the USB Host Controller info
 
