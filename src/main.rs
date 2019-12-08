@@ -11,20 +11,74 @@ use core::{
     ptr::NonNull
 };
 
-mod api {
-    #![allow(non_snake_case, non_camel_case_types)]
+pub mod api {
+    #![allow(non_snake_case, non_camel_case_types, non_upper_case_globals)]
     use winapi::{shared::minwindef::*, um::winnt::*};
+    use winapi::{STRUCT, ENUM};
     pub const IOCTL_GET_HCD_DRIVERKEY_NAME: DWORD = 0x220424;
     winapi::STRUCT!{struct USB_HCD_DRIVERKEY_NAME {
         ActualLength: ULONG,
         DriverKeyName: [WCHAR; 1],
     }}
-    //pub type PUSB_HCD_DRIVERKEY_NAME = *mut USB_HCD_DRIVERKEY_NAME;
+    pub type PUSB_HCD_DRIVERKEY_NAME = *mut USB_HCD_DRIVERKEY_NAME;
+    STRUCT!{struct USBUSER_POWER_INFO_REQUEST {
+        Header: USBUSER_REQUEST_HEADER,
+        PowerInformation: USB_POWER_INFO,
+    }}
+    pub type PUSBUSER_POWER_INFO_REQUEST = *mut USBUSER_POWER_INFO_REQUEST;
+    STRUCT!{struct USBUSER_REQUEST_HEADER {
+        UsbUserRequest: ULONG,
+        UsbUserStatusCode: USB_USER_ERROR_CODE,
+        RequestBufferLength: ULONG,
+        ActualBufferLength: ULONG,
+    }}
+    pub type PUSBUSER_REQUEST_HEADER = *mut USBUSER_REQUEST_HEADER;
+    ENUM!{enum USB_USER_ERROR_CODE {
+        UsbUserSuccess,
+        UsbUserNotSupported,
+        UsbUserInvalidRequestCode,
+        UsbUserFeatureDisabled,
+        UsbUserInvalidHeaderParameter,
+        UsbUserInvalidParameter,
+        UsbUserMiniportError,
+        UsbUserBufferTooSmall,
+        UsbUserErrorNotMapped,
+        UsbUserDeviceNotStarted,
+        UsbUserNoDeviceConnected,
+    }}
+    STRUCT!{struct USB_POWER_INFO {
+        SystemState: WDMUSB_POWER_STATE,
+        HcDevicePowerState: WDMUSB_POWER_STATE,
+        HcDeviceWake: WDMUSB_POWER_STATE,
+        HcSystemWake: WDMUSB_POWER_STATE,
+        RhDevicePowerState: WDMUSB_POWER_STATE,
+        RhDeviceWake: WDMUSB_POWER_STATE,
+        RhSystemWake: WDMUSB_POWER_STATE,
+        LastSystemSleepState: WDMUSB_POWER_STATE,
+        CanWakeup: BOOLEAN,
+        IsPowered: BOOLEAN,
+    }}
+    pub type PUSB_POWER_INFO = *mut USB_POWER_INFO;
+    ENUM!{enum WDMUSB_POWER_STATE {
+        WdmUsbPowerNotMapped,
+        WdmUsbPowerSystemUnspecified,
+        WdmUsbPowerSystemWorking,
+        WdmUsbPowerSystemSleeping1,
+        WdmUsbPowerSystemSleeping2,
+        WdmUsbPowerSystemSleeping3,
+        WdmUsbPowerSystemHibernate,
+        WdmUsbPowerSystemShutdown,
+        WdmUsbPowerDeviceUnspecified,
+        WdmUsbPowerDeviceD0,
+        WdmUsbPowerDeviceD1,
+        WdmUsbPowerDeviceD2,
+        WdmUsbPowerDeviceD3,
+    }}
 }
 use api::*;
 
 fn enumerate_host_controllers() {
-    let (devices, hubs) = enumerate_all_devices();
+    let (_devices, _hubs) = enumerate_all_devices(); //todo
     // println!("{:#?}", devices);
     // println!("{:#?}", hubs);
     
@@ -127,6 +181,7 @@ fn enumerate_host_controllers() {
     }
 }
 
+#[allow(unused)]  // todo
 struct DeviceNode {
     device_desc_name: Option<std::ffi::OsString>,
     device_driver_name: Option<std::ffi::OsString>,
@@ -576,9 +631,26 @@ fn enumerate_host_controller(h_hc_dev: HANDLE) {
     unsafe { HeapFree(heap_handle, 0, driver_key_name_w.cast().as_ptr()) };
 
     // find device instance matching the driver name
-    let dev_props = driver_name_to_device_properties(&driver_key_name);
-    println!("| {:#?}", dev_props);
+    let dev_props = driver_name_to_device_properties(&driver_key_name)
+        .expect("get dev props");
+    // println!("{:#?}", dev_props);
+    println!("│ Id: {:?}", dev_props.device_id);
+    println!("│ Desc: {:?}", dev_props.device_desc.unwrap());
     
+    let hc_info = get_host_controller_power_map(h_hc_dev);
+    println!("| Info: {:?}", hc_info);
+}
+
+#[derive(Debug)]
+struct UsbHostControllerInfo {
+
+}
+
+fn get_host_controller_power_map(
+    h_hc_dev: HANDLE,
+) -> UsbHostControllerInfo {
+    
+    unimplemented!()
 }
 
 fn main() {
