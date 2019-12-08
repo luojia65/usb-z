@@ -25,8 +25,8 @@ use api::*;
 
 fn enumerate_host_controllers() {
     let (devices, hubs) = enumerate_all_devices();
-    println!("{:#?}", devices);
-    println!("{:#?}", hubs);
+    // println!("{:#?}", devices);
+    // println!("{:#?}", hubs);
     
     let device_info = unsafe {
         SetupDiGetClassDevsW(
@@ -390,6 +390,7 @@ fn driver_name_to_device_inst(
     None
 }
 
+// We may enumerate more about this device here
 #[derive(Debug)]
 struct DevicePnpStrings {
     device_id: std::ffi::OsString,
@@ -505,7 +506,7 @@ fn driver_name_to_device_properties(
     use std::os::windows::prelude::*;    
     let device_id = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
         device_id_buf.cast().as_ref(),
-        len as usize / 2 
+        len as usize - 1
     ) });
 
     unsafe { HeapFree(heap_handle, 0, device_id_buf.cast().as_ptr()) };
@@ -576,7 +577,7 @@ fn enumerate_host_controller(h_hc_dev: HANDLE) {
     // find device instance matching the driver name
     let dev_props = driver_name_to_device_properties(&driver_key_name);
     println!("| {:#?}", dev_props);
-
+    
 }
 
 fn main() {
