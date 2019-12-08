@@ -286,6 +286,7 @@ fn get_device_property(
     device_info_data: PSP_DEVINFO_DATA,
     property: DWORD,
 ) -> Option<(*mut u8, DWORD)> {
+    // println!("PROPERTY: {}", property);
     let mut required_length = MaybeUninit::uninit();
     let success = unsafe { 
         SetupDiGetDeviceRegistryPropertyW(
@@ -362,8 +363,8 @@ fn driver_name_to_device_inst(
             get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DRIVER) {
                 ans
             } else {
-                println!("[2]SPDRP_DRIVER");
-                break;
+                // println!("[2]SPDRP_DRIVER");
+                continue;
             };
         
         use std::os::windows::prelude::*;
