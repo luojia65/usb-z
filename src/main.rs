@@ -510,9 +510,6 @@ fn driver_name_to_device_properties(
 
     unsafe { HeapFree(heap_handle, 0, device_id_buf.cast().as_ptr()) };
 
-    // let mut device_info_data = Box::<SP_DEVINFO_DATA>::new_uninit();
-    // unsafe { device_info_data.get_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
-    
     // println!("111 {:?}", device_id.clone());
     // println!("222 {:?}", device_info);
     // println!("333 {:?}", device_info_data.as_mut() as *const _ as PSP_DEVINFO_DATA);
