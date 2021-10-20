@@ -1,4 +1,4 @@
-#![feature(maybe_uninit_ref, new_uninit)]
+#![feature(new_uninit)]
 use winapi::{
     shared::{guiddef::GUID, usbiodef::*, minwindef::*, winerror::*},
     um::{
@@ -100,9 +100,9 @@ fn enumerate_host_controllers() {
         println!("SetupDiGetClassDevsW Error!");
     }
     let mut device_info_data = MaybeUninit::<SP_DEVINFO_DATA>::uninit();
-    unsafe { device_info_data.get_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
+    unsafe { device_info_data.assume_init_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
     let mut device_interface_data = MaybeUninit::<SP_DEVICE_INTERFACE_DATA>::uninit();
-    unsafe { device_interface_data.get_mut() }.cbSize = size_of::<SP_DEVICE_INTERFACE_DATA>() as DWORD;
+    unsafe { device_interface_data.assume_init_mut() }.cbSize = size_of::<SP_DEVICE_INTERFACE_DATA>() as DWORD;
     let mut index = 0;
     while unsafe { 
         SetupDiEnumDeviceInfo(
@@ -230,7 +230,7 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) -> Vec<DeviceNode> {
     let mut nodes = Vec::new();
     loop {
         let mut device_info_data = Box::<SP_DEVINFO_DATA>::new_uninit();
-        unsafe { device_info_data.get_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
+        unsafe { device_info_data.assume_init_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
         let success = unsafe { 
             SetupDiEnumDeviceInfo(
                 device_info,
@@ -268,7 +268,7 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) -> Vec<DeviceNode> {
         // end print
 
         let mut device_interface_data = MaybeUninit::<SP_DEVICE_INTERFACE_DATA>::uninit();
-        unsafe { device_interface_data.get_mut() }.cbSize = size_of::<SP_DEVICE_INTERFACE_DATA>() as DWORD;
+        unsafe { device_interface_data.assume_init_mut() }.cbSize = size_of::<SP_DEVICE_INTERFACE_DATA>() as DWORD;
         let success = unsafe {
             SetupDiEnumDeviceInterfaces(
                 device_info,
@@ -408,7 +408,7 @@ fn driver_name_to_device_inst(
     let mut index = 0;
     loop {
         let mut device_info_data = Box::<SP_DEVINFO_DATA>::new_uninit();
-        unsafe { device_info_data.get_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
+        unsafe { device_info_data.assume_init_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
         let success = unsafe { 
             SetupDiEnumDeviceInfo(
                 device_info,
@@ -583,7 +583,7 @@ fn driver_name_to_device_properties(
 fn enumerate_host_controller(h_hc_dev: HANDLE) {
     // get HCD driver key name from handle; GetHCDDriverKeyName
     let mut driver_key_name = MaybeUninit::<USB_HCD_DRIVERKEY_NAME>::uninit();
-    unsafe { driver_key_name.get_mut() }.ActualLength = 0;
+    unsafe { driver_key_name.assume_init_mut() }.ActualLength = 0;
     let nbytes = 0;
     let success = unsafe { 
         DeviceIoControl(
@@ -601,7 +601,7 @@ fn enumerate_host_controller(h_hc_dev: HANDLE) {
         println!("DeviceIoControl Error[1]!");
         return;
     } 
-    let nbytes = unsafe { driver_key_name.get_mut() }.ActualLength;
+    let nbytes = unsafe { driver_key_name.assume_init_mut() }.ActualLength;
     let heap_handle = unsafe { GetProcessHeap() };
     let driver_key_name_w = NonNull::new(unsafe { 
         HeapAlloc(heap_handle, 0, nbytes as usize) as *mut _ 
@@ -648,19 +648,19 @@ fn enumerate_host_controller(h_hc_dev: HANDLE) {
     // println!("| Info: {:?}", hc_info);
 
     // Get bus, device and function
-    let root_hub_name = get_root_hub_name(h_hc_dev);
-    println!("│ ├ Root hub");
-    println!("│ │ Name: {:?}", root_hub_name);
 
     // Get the USB Host Controller info
 
     // Get name of root hub, enumerate root hub
+    let root_hub_name = get_root_hub_name(h_hc_dev);
+    println!("│ ├ Root hub");
+    println!("│ │ Name: {:?}", root_hub_name);
 
 }
 
 fn get_root_hub_name(h_hc_dev: HANDLE) -> std::ffi::OsString {
     let mut root_hub_name_w = Box::<USB_ROOT_HUB_NAME>::new_uninit();
-    unsafe { root_hub_name_w.get_mut() }.ActualLength = 0;
+    unsafe { root_hub_name_w.assume_init_mut() }.ActualLength = 0;
     let mut n_bytes = 0;
     let success = unsafe {
         DeviceIoControl(
@@ -681,7 +681,7 @@ fn get_root_hub_name(h_hc_dev: HANDLE) -> std::ffi::OsString {
     //     unsafe { root_hub_name_w.get_mut() }.ActualLength, 
     //     n_bytes
     // );
-    n_bytes += unsafe { root_hub_name_w.get_mut() }.ActualLength;
+    n_bytes += unsafe { root_hub_name_w.assume_init_mut() }.ActualLength;
     let heap_handle = unsafe { GetProcessHeap() };
     let root_hub_name_w = NonNull::new(unsafe { 
         HeapAlloc(heap_handle, 0, n_bytes as usize) as *mut _ 
