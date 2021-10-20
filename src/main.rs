@@ -1,4 +1,6 @@
-#![feature(new_uninit)]
+mod get_device_property;
+use get_device_property::get_device_property;
+
 use winapi::{
     shared::{guiddef::GUID, usbiodef::*, minwindef::*, winerror::*},
     um::{
@@ -242,25 +244,24 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) -> Vec<DeviceNode> {
         }
         // println!("{}", index);
         use std::os::windows::prelude::*;
-        let heap_handle = unsafe { GetProcessHeap() };
-        let name_device_desc = get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DEVICEDESC)
-            .map(|(property_buffer, property_buffer_len)| {
-                let ans = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
-                    property_buffer as *const _,
-                    property_buffer_len as usize / 2 - 1
-                ) });
-                unsafe { HeapFree(heap_handle, 0, property_buffer as *mut _) };
-                ans
-            });
-        let name_driver = get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DRIVER)
-            .map(|(property_buffer, property_buffer_len)| {
-                let ans = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
-                    property_buffer as *const _,
-                    property_buffer_len as usize / 2 - 1
-                ) });
-                unsafe { HeapFree(heap_handle, 0, property_buffer as *mut _) };
-                ans
-            });
+        // let heap_handle = unsafe { GetProcessHeap() };
+        // let name_device_desc = get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DEVICEDESC)
+        //     .map(|(property_buffer, property_buffer_len)| {
+        //         let ans = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
+        //             property_buffer as *const _,
+        //             property_buffer_len as usize / 2 - 1
+        //         ) });
+        //         unsafe { HeapFree(heap_handle, 0, property_buffer as *mut _) };
+        //         ans
+        //     });
+        let mut buf = vec![0; 100];
+        let name_device_desc = 
+            get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DEVICEDESC, &mut buf)
+            .ok();
+
+        let name_driver = 
+            get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DRIVER, &mut buf)
+            .ok();
         // print (?)
         // println!("{:?}", name_device_desc);
         // println!("{:?}", name_driver);
@@ -341,55 +342,6 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) -> Vec<DeviceNode> {
     nodes
 }
 
-fn get_device_property(
-    device_info_set: HDEVINFO,
-    device_info_data: PSP_DEVINFO_DATA,
-    property: DWORD,
-) -> Option<(*mut u8, DWORD)> {
-    // println!("PROPERTY: {}", property);
-    let mut required_length = MaybeUninit::uninit();
-    let success = unsafe { 
-        SetupDiGetDeviceRegistryPropertyW(
-            device_info_set,
-            device_info_data,
-            property,
-            core::ptr::null_mut(),
-            core::ptr::null_mut(),
-            0,
-            required_length.as_mut_ptr()
-        )
-    };
-    if success != FALSE && unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER {
-        println!("SetupDiGetDeviceRegistryPropertyW Error[1]!");
-    }
-    let heap_handle = unsafe { GetProcessHeap() };
-    let property_buffer = NonNull::new(unsafe { 
-        HeapAlloc(heap_handle, 0, required_length.assume_init() as usize) as *mut _ 
-    });
-    let property_buffer = if let Some(property_buffer) = property_buffer { 
-        property_buffer.as_ptr()
-    } else {
-        println!("Error HeapAlloc");
-        panic!()
-    };
-    let success = unsafe { 
-        SetupDiGetDeviceRegistryPropertyW(
-            device_info_set,
-            device_info_data,
-            property,
-            core::ptr::null_mut(),
-            property_buffer,
-            required_length.assume_init(),
-            required_length.as_mut_ptr()
-        )
-    };
-    if success == FALSE {
-        println!("SetupDiGetDeviceRegistryPropertyW Error[2]! {}", unsafe { GetLastError() });
-        return None;
-    }
-    Some((property_buffer, unsafe { required_length.assume_init() }))
-}
-
 fn driver_name_to_device_inst(
     driver_name: &std::ffi::OsStr,
 ) -> Option<(HDEVINFO, SP_DEVINFO_DATA)> {
@@ -419,19 +371,18 @@ fn driver_name_to_device_inst(
         if success == FALSE {
             break;
         }
-        let (property_buffer, property_buffer_len) = if let Some(ans) =
-            get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DRIVER) {
-                ans
+        let mut buf = vec![0; 300];
+        let buf_string = {
+            let tmp = get_device_property(device_info, device_info_data.as_mut_ptr(), SPDRP_DRIVER, &mut buf);
+            if let Ok(a) = tmp {
+                // println!("string: {:?}", a);
+                a
             } else {
-                // println!("[2]SPDRP_DRIVER");
-                continue;
-            };
-        
-        use std::os::windows::prelude::*;
-        let buf_string = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
-            property_buffer as *mut _,
-            property_buffer_len as usize / 2 - 1
-        ) }); 
+                // println!("SPDRP_DRIVER");
+                continue
+            }
+        };
+
         // println!("{}: {:?}; {:?}", index, buf_string, driver_name);
         // println!("{}: {:#?}", index, 
         //     get_device_pnp_strings(buf_string.clone(), device_info, device_info_data.clone())
@@ -466,44 +417,12 @@ fn get_device_pnp_strings(
     device_info: HDEVINFO, 
     device_info_data: PSP_DEVINFO_DATA
 ) -> DevicePnpStrings {
-    use std::os::windows::prelude::*;    
-    let heap_handle = unsafe { GetProcessHeap() };
-    let device_desc = get_device_property(device_info, device_info_data, SPDRP_DEVICEDESC)
-        .map(|(property_buffer, property_buffer_len)| {
-            let ans = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
-                property_buffer as *const _,
-                property_buffer_len as usize / 2 - 1
-            ) });
-            unsafe { HeapFree(heap_handle, 0, property_buffer as *mut _) };
-            ans
-        });
-    let device_hw_id = get_device_property(device_info, device_info_data, SPDRP_HARDWAREID)
-        .map(|(property_buffer, property_buffer_len)| {
-            let ans = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
-                property_buffer as *const _,
-                property_buffer_len as usize / 2 - 1
-            ) });
-            unsafe { HeapFree(heap_handle, 0, property_buffer as *mut _) };
-            ans
-        });
-    let service = get_device_property(device_info, device_info_data, SPDRP_SERVICE)
-        .map(|(property_buffer, property_buffer_len)| {
-            let ans = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
-                property_buffer as *const _,
-                property_buffer_len as usize / 2 - 1
-            ) });
-            unsafe { HeapFree(heap_handle, 0, property_buffer as *mut _) };
-            ans
-        });
-    let device_class = get_device_property(device_info, device_info_data, SPDRP_CLASS)
-        .map(|(property_buffer, property_buffer_len)| {
-            let ans = std::ffi::OsString::from_wide(unsafe { core::slice::from_raw_parts(
-                property_buffer as *const _,
-                property_buffer_len as usize / 2 - 1
-            ) });
-            unsafe { HeapFree(heap_handle, 0, property_buffer as *mut _) };
-            ans
-        });
+    let mut buf = vec![0; 200];
+    let device_desc = get_device_property(device_info, device_info_data, SPDRP_DEVICEDESC, &mut buf).ok();
+    let device_hw_id = get_device_property(device_info, device_info_data, SPDRP_HARDWAREID, &mut buf).ok();
+    let service = get_device_property(device_info, device_info_data, SPDRP_SERVICE, &mut buf).ok();
+    let device_class = get_device_property(device_info, device_info_data, SPDRP_CLASS, &mut buf).ok();
+
     // println!("ID {:?}", device_id);
     // println!("DESC {:?}", device_desc);
     // println!("HWID {:?}", device_hw_id);
@@ -522,6 +441,7 @@ fn get_device_pnp_strings(
 fn driver_name_to_device_properties(
     driver_name: &std::ffi::OsStr
 ) -> Option<DevicePnpStrings> {
+    // println!("driver name {:?}", driver_name);
     let (device_info, mut device_info_data) = 
         if let Some(ans) = driver_name_to_device_inst(driver_name) {
             ans
@@ -641,6 +561,8 @@ fn enumerate_host_controller(h_hc_dev: HANDLE) {
     // println!("{:#?}", dev_props);
     println!("│ Id: {:?}", dev_props.device_id);
     println!("│ Desc: {:?}", dev_props.device_desc.unwrap());
+    println!("│ Service: {:?}", dev_props.service.unwrap());
+    println!("│ Class: {:?}", dev_props.device_class.unwrap());
     
     // // Get the USB Host Controller power map
     // let hc_info = get_host_controller_power_map(h_hc_dev);
