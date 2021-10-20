@@ -187,12 +187,11 @@ fn enumerate_host_controllers() {
     }
 }
 
-#[allow(unused)]  // todo
 struct DeviceNode {
     device_desc_name: Option<std::ffi::OsString>,
     device_driver_name: Option<std::ffi::OsString>,
     device_path: std::ffi::OsString,
-    device_info_data: Box<SP_DEVINFO_DATA>,
+    device_info_data: SP_DEVINFO_DATA,
 }
 
 use core::fmt;
@@ -229,7 +228,7 @@ fn enumerate_all_devices_with_guid(guid: *const GUID) -> Vec<DeviceNode> {
     let mut index = 0;
     let mut nodes = Vec::new();
     loop {
-        let mut device_info_data = Box::<SP_DEVINFO_DATA>::new_uninit();
+        let mut device_info_data: MaybeUninit<SP_DEVINFO_DATA> = MaybeUninit::uninit();
         unsafe { device_info_data.assume_init_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
         let success = unsafe { 
             SetupDiEnumDeviceInfo(
@@ -393,7 +392,7 @@ fn get_device_property(
 
 fn driver_name_to_device_inst(
     driver_name: &std::ffi::OsStr,
-) -> Option<(HDEVINFO, Box<SP_DEVINFO_DATA>)> {
+) -> Option<(HDEVINFO, SP_DEVINFO_DATA)> {
     let device_info = unsafe {
         SetupDiGetClassDevsW (
             core::ptr::null(),
@@ -407,7 +406,7 @@ fn driver_name_to_device_inst(
     }
     let mut index = 0;
     loop {
-        let mut device_info_data = Box::<SP_DEVINFO_DATA>::new_uninit();
+        let mut device_info_data: MaybeUninit<SP_DEVINFO_DATA> = MaybeUninit::uninit();
         unsafe { device_info_data.assume_init_mut() }.cbSize = size_of::<SP_DEVINFO_DATA>() as DWORD;
         let success = unsafe { 
             SetupDiEnumDeviceInfo(
@@ -533,7 +532,7 @@ fn driver_name_to_device_properties(
     let success = unsafe {
         SetupDiGetDeviceInstanceIdW(
             device_info,
-            device_info_data.as_mut(),
+            &mut device_info_data,
             core::ptr::null_mut(),
             0,
             &mut len as *const _ as *mut _
@@ -556,7 +555,7 @@ fn driver_name_to_device_properties(
     let success = unsafe {
         SetupDiGetDeviceInstanceIdW(
             device_info,
-            device_info_data.as_mut(),
+            &mut device_info_data,
             device_id_buf.cast().as_mut(),
             len,
             &mut len as *const _ as *mut _
@@ -577,7 +576,7 @@ fn driver_name_to_device_properties(
     // println!("222 {:?}", device_info);
     // println!("333 {:?}", device_info_data.as_mut() as *const _ as PSP_DEVINFO_DATA);
     
-    Some(get_device_pnp_strings(device_id, device_info, device_info_data.as_mut()))
+    Some(get_device_pnp_strings(device_id, device_info, &mut device_info_data))
 }
 
 fn enumerate_host_controller(h_hc_dev: HANDLE) {
@@ -659,7 +658,7 @@ fn enumerate_host_controller(h_hc_dev: HANDLE) {
 }
 
 fn get_root_hub_name(h_hc_dev: HANDLE) -> std::ffi::OsString {
-    let mut root_hub_name_w = Box::<USB_ROOT_HUB_NAME>::new_uninit();
+    let mut root_hub_name_w: MaybeUninit<USB_ROOT_HUB_NAME> = MaybeUninit::uninit();
     unsafe { root_hub_name_w.assume_init_mut() }.ActualLength = 0;
     let mut n_bytes = 0;
     let success = unsafe {
