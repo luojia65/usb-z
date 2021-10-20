@@ -32,9 +32,12 @@ pub fn get_device_property(
             required_length_bytes.as_mut_ptr()
         )
     };
-    // println!("[1] buf cap = {}, len = {}, req size = {}", buf.capacity(), buf.len(), unsafe { required_length_bytes.assume_init() });
-    if success == FALSE && unsafe { GetLastError() } == ERROR_INSUFFICIENT_BUFFER {
-        let new_len = unsafe { required_length_bytes.assume_init() } as usize / size_of::<u16>();
+    if success == FALSE && unsafe { GetLastError() } != ERROR_INSUFFICIENT_BUFFER {
+        return Err(io::Error::last_os_error())
+    }
+    let new_len = unsafe { required_length_bytes.assume_init() } as usize / size_of::<u16>();
+    // if success == TRUE, skip and return directly
+    if success == FALSE { // unsafe { GetLastError() } == ERROR_INSUFFICIENT_BUFFER
         let additional = new_len - buf.len();
         buf.reserve(additional);
         let success = unsafe { 
@@ -51,16 +54,7 @@ pub fn get_device_property(
         if success == FALSE { 
             return Err(io::Error::last_os_error())
         }
-        unsafe { buf.set_len(new_len - 1) } // remove \0;
-        // println!("[2] buf cap = {}, len = {}, req size = {}", buf.capacity(), buf.len(), unsafe { required_length_bytes.assume_init() });
-        Ok(OsString::from_wide(buf))
-    } else if success == TRUE {
-        let new_len = unsafe { required_length_bytes.assume_init() } as usize / size_of::<u16>();
-        unsafe { buf.set_len(new_len - 1) } // remove \0;
-        // println!("[3] buf cap = {}, len = {}, req size = {}", buf.capacity(), buf.len(), unsafe { required_length_bytes.assume_init() });
-        Ok(OsString::from_wide(buf))
-    } else {
-        // panic!("[4] error {}", io::Error::last_os_error());
-        Err(io::Error::last_os_error())
-    }
+    } 
+    unsafe { buf.set_len(new_len - 1) } // remove \0;
+    Ok(OsString::from_wide(buf))
 }

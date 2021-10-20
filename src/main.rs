@@ -86,9 +86,9 @@ pub mod api {
 use api::*;
 
 fn enumerate_host_controllers() {
-    let (_devices, _hubs) = enumerate_all_devices(); //todo
-    // println!("{:#?}", devices);
-    // println!("{:#?}", hubs);
+    let (devices, hubs) = enumerate_all_devices(); //todo
+    println!("{:#?}", devices);
+    println!("{:#?}", hubs);
     
     let device_info = unsafe {
         SetupDiGetClassDevsW(
@@ -552,7 +552,7 @@ fn enumerate_host_controller(h_hc_dev: HANDLE) {
         &driver_key_name_w.as_ref().DriverKeyName as *const _,
         (nbytes as usize - size_of::<ULONG>()) / 2 - 2 
     ) }); // cut two trailing \0 bytes
-    println!("│ HCD Driver Key Name: {:?}", driver_key_name);
+    println!("│ (HCD Driver Key Name: {:?})", driver_key_name);
     unsafe { HeapFree(heap_handle, 0, driver_key_name_w.cast().as_ptr()) };
 
     // find device instance matching the driver name
