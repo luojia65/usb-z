@@ -1,5 +1,7 @@
 mod get_device_property;
 use get_device_property::get_device_property;
+mod host_controller;
+use host_controller::host_controllers;
 
 use winapi::{
     shared::{guiddef::GUID, usbiodef::*, minwindef::*, winerror::*},
@@ -651,4 +653,10 @@ fn get_root_hub_name(h_hc_dev: HANDLE) -> std::ffi::OsString {
 
 fn main() {
     enumerate_host_controllers();
+
+    let host_controllers = host_controllers().unwrap().collect::<Vec<_>>();
+    for host_controller in host_controllers {
+        let host_controller = host_controller.unwrap();
+        println!("Host controller: {:?}", host_controller);
+    }
 }
