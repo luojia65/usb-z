@@ -140,7 +140,7 @@ impl Iterator for HostControllers {
             return Some(Err(io::Error::last_os_error()))
         }
         let new_len = unsafe { required_size_bytes.assume_init() } as usize / size_of::<u16>();
-        println!("len = {}", new_len);
+        // println!("len = {}", new_len);
         if success == FALSE { // && unsafe { GetLastError() } == ERROR_INSUFFICIENT_BUFFER 
             let additional = new_len - self.detail_data_buf.len();
             self.detail_data_buf.reserve(additional);
