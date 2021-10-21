@@ -2,6 +2,8 @@ mod get_device_property;
 use get_device_property::get_device_property;
 mod host_controller;
 use host_controller::host_controllers;
+mod usb_path;
+mod usb_subsystem;
 
 use winapi::{
     shared::{guiddef::GUID, usbiodef::*, minwindef::*, winerror::*},
