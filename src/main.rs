@@ -660,6 +660,7 @@ fn main() {
     for host_controller in host_controllers {
         let host_controller = host_controller.unwrap();
         println!("Host controller: {:?}", host_controller);
-        println!("Driver key: {:?}", host_controller.driver_key().unwrap());
+        let driver_key = host_controller.driver_key().unwrap();
+        println!("Driver key: {:?}", driver_key);
     }
 }

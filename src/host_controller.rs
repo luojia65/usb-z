@@ -232,6 +232,10 @@ pub struct DriverKey {
     name: OsString,
 }
 
+impl DriverKey {
+    
+}
+
 impl fmt::Debug for DriverKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", &self.name.to_string_lossy())
