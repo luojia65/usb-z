@@ -39,6 +39,64 @@ impl HostController {
         let path = OsString::from_wide(&detail_data_buf[offset..tail]);
         Ok(Self { path, h_hc_dev })
     }
+
+    // get usb hcd driver key name
+    pub fn driver_key(&self) -> io::Result<DriverKey> {
+        #![allow(non_snake_case, non_camel_case_types, non_upper_case_globals)]
+        use winapi::um::ioapiset::DeviceIoControl;
+        const IOCTL_GET_HCD_DRIVERKEY_NAME: DWORD = 0x220424;
+        winapi::STRUCT!{struct USB_HCD_DRIVERKEY_NAME {
+            ActualLength: ULONG,
+            DriverKeyName: [WCHAR; 1],
+        }}
+        let mut required_length_bytes = MaybeUninit::uninit();
+        let mut driver_key_name = MaybeUninit::<USB_HCD_DRIVERKEY_NAME>::uninit();
+        let success = unsafe { 
+            DeviceIoControl(
+                self.h_hc_dev,
+                IOCTL_GET_HCD_DRIVERKEY_NAME,
+                core::ptr::null_mut(), // input buffer
+                0, // input buffer
+                driver_key_name.as_mut_ptr() as LPVOID,
+                size_of::<USB_HCD_DRIVERKEY_NAME>() as DWORD,
+                required_length_bytes.as_mut_ptr(),
+                core::ptr::null_mut()
+            )
+        };
+        if success == FALSE {
+            return Err(io::Error::last_os_error())
+        }
+        let new_len = unsafe { driver_key_name.assume_init_ref() }.ActualLength as usize / size_of::<u16>();
+        // println!("new-len = {}", new_len); // 47
+        // println!("returned-bytes = {}", unsafe { *required_length_bytes.as_ptr() }); // 6
+        let mut buf: Vec<u16> = Vec::new();
+        buf.reserve(new_len);
+        let success = unsafe { 
+            DeviceIoControl(
+                self.h_hc_dev,
+                IOCTL_GET_HCD_DRIVERKEY_NAME,
+                core::ptr::null_mut(), // input buffer
+                0, // input buffer
+                buf.as_mut_ptr() as LPVOID,
+                (buf.capacity() * size_of::<u16>()) as u32,
+                required_length_bytes.as_mut_ptr(),
+                core::ptr::null_mut()
+            )
+        };
+        if success == FALSE { 
+            return Err(io::Error::last_os_error())
+        }
+        unsafe { buf.set_len(new_len) };
+        let string = unsafe {
+            core::slice::from_raw_parts(
+                &(*(buf.as_ptr() as *const USB_HCD_DRIVERKEY_NAME)).DriverKeyName as *const u16,
+                new_len - size_of::<ULONG>(),
+            )
+        };
+        Ok(DriverKey {
+            name: OsString::from_wide(string)
+        })
+    }
 }
 
 impl fmt::Debug for HostController {
@@ -167,5 +225,15 @@ impl Iterator for HostControllers {
 impl Drop for HostControllers {
     fn drop(&mut self) {
         unsafe { SetupDiDestroyDeviceInfoList(self.device_info_set) };
+    }
+}
+
+pub struct DriverKey {
+    name: OsString,
+}
+
+impl fmt::Debug for DriverKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.name.to_string_lossy())
     }
 }
